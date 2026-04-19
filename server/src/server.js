@@ -1,6 +1,6 @@
+require('dotenv').config({ path: '/Users/divaykansal/Downloads/codeops-ai/.env' });
 const { httpServer } = require('./app');
 const connectDB = require('./utils/db');
-
 const PORT = process.env.PORT || 3001;
 
 async function start() {

@@ -3,7 +3,6 @@ const crypto = require('crypto');
 const router = express.Router();
 const Review = require('../models/Review.model');
 const Repository = require('../models/Repository.model');
-const { enqueueReview } = require('../services/sqs.service');
 const { getPRDiff, getPRFiles, postReviewComment } = require('../services/github.service');
 const { orchestrateReview } = require('../agents/orchestrator');
 
@@ -64,7 +63,8 @@ async function handlePREvent(payload, io) {
 
     io?.emit('review:queued', { reviewId: review._id, prNumber: pr.number, repoFullName: repository.full_name });
 
-    const sqsPayload = {
+    console.log('SQS not configured — processing inline');
+    await processReviewInline({
       reviewId: review._id.toString(),
       installationId,
       owner: repository.owner.login,
@@ -73,20 +73,15 @@ async function handlePREvent(payload, io) {
       prTitle: pr.title,
       commitSha: pr.head.sha,
       language: repository.language,
-    };
+    }, io);
 
-    const sqsResult = await enqueueReview(sqsPayload);
-
-    if (!sqsResult) {
-      await processReviewInline(sqsPayload, io);
-    }
   } catch (err) {
     console.error('[Webhook] Error handling PR event:', err);
   }
 }
 
 async function processReviewInline(payload, io) {
-  const { reviewId, installationId, owner, repo, pullNumber, prTitle, commitSha, language } = payload;
+  const { reviewId, installationId, owner, repo, pullNumber, prTitle, language } = payload;
 
   await Review.findByIdAndUpdate(reviewId, { status: 'processing' });
   io?.emit('review:processing', { reviewId });
@@ -98,9 +93,7 @@ async function processReviewInline(payload, io) {
     ]);
 
     const filesChanged = files.map(f => f.filename);
-
     const result = await orchestrateReview({ diff, prTitle, language });
-
     const commentData = await postReviewComment(installationId, owner, repo, pullNumber, result.comment);
 
     await Review.findByIdAndUpdate(reviewId, {
@@ -121,6 +114,8 @@ async function processReviewInline(payload, io) {
     );
 
     io?.emit('review:completed', { reviewId, severityScore: result.severityScore, findingsCount: result.findings.length });
+    console.log(`[Webhook] Review completed. Score: ${result.severityScore}, Issues: ${result.findings.length}`);
+
   } catch (err) {
     console.error('[Webhook] Review processing failed:', err);
     await Review.findByIdAndUpdate(reviewId, { status: 'failed', error: err.message });
@@ -129,4 +124,3 @@ async function processReviewInline(payload, io) {
 }
 
 module.exports = router;
-module.exports.processReviewInline = processReviewInline;
