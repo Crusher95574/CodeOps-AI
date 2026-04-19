@@ -1,11 +1,20 @@
 const { ChatGoogleGenerativeAI } = require('@langchain/google-genai');
 const { HumanMessage, SystemMessage } = require('@langchain/core/messages');
 
-const model = new ChatGoogleGenerativeAI({
-  model: 'gemini-2.5-flash',
-  temperature: 0.1,
-  apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
-});
+const getModel = () => {
+  const apiKey =
+    process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Missing Gemini API Key in environment variables");
+  }
+
+  return new ChatGoogleGenerativeAI({
+    model: 'gemini-2.5-flash',
+    temperature: 0.1,
+    apiKey,
+  });
+};
 
 const SYSTEM_PROMPT = `You are an expert code reviewer. Analyze the provided git diff and identify:
 1. Bugs and logic errors
@@ -29,6 +38,8 @@ Respond ONLY with valid JSON in this exact format:
 }`;
 
 async function runCodeReviewAgent(diff, prTitle, language) {
+  const model = getModel(); // ✅ created at runtime
+
   const prompt = `PR Title: ${prTitle}
 Language: ${language || 'unknown'}
 

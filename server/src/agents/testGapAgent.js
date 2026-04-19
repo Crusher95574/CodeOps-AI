@@ -1,11 +1,20 @@
 const { ChatGoogleGenerativeAI } = require('@langchain/google-genai');
 const { HumanMessage, SystemMessage } = require('@langchain/core/messages');
 
-const model = new ChatGoogleGenerativeAI({
-  model: 'gemini-2.5-flash',
-  temperature: 0.2,
-  apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
-});
+const getModel = () => {
+  const apiKey =
+    process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Missing Gemini API Key in environment variables");
+  }
+
+  return new ChatGoogleGenerativeAI({
+    model: 'gemini-2.5-flash',
+    temperature: 0.2,
+    apiKey,
+  });
+};
 
 const SYSTEM_PROMPT = `You are a senior QA engineer and testing expert.
 Analyze the provided git diff and identify:
@@ -32,6 +41,8 @@ Respond ONLY with valid JSON in this exact format:
 }`;
 
 async function runTestGapAgent(diff, prTitle) {
+  const model = getModel(); // ✅ FIXED
+
   const prompt = `PR Title: ${prTitle}
 
 Git Diff:
@@ -47,10 +58,17 @@ Identify missing tests and return JSON findings.`;
   ]);
 
   const text = response.content;
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Test gap agent returned invalid JSON');
 
-  return JSON.parse(jsonMatch[0]);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Test gap agent returned invalid JSON');
+    parsed = JSON.parse(match[0]);
+  }
+
+  return parsed;
 }
 
 module.exports = { runTestGapAgent };
